@@ -184,8 +184,8 @@ namespace Lexer
 			quotationMarkActions[0x27 /* ' */] += ActionTokenCompleted;
 		}
 
-		private void BuildAmpersandLevel() => BuildDoubleOperatorLevel(State.Minus, 0x26 /* & */);
-		private void BuildEqualsLevel() => BuildDoubleOperatorLevel(State.Minus, 0x3d /* = */);
+		private void BuildAmpersandLevel() => BuildDoubleOperatorLevel(State.Ampersand, 0x26 /* & */);
+		private void BuildEqualsLevel() => BuildDoubleOperatorLevel(State.Equals, 0x3d /* = */);
 		private void BuildMinusLevel() => BuildDoubleOperatorLevel(State.Minus, 0x3e /* > */);
 
 		private void BuildDoubleOperatorLevel(State level, int secondChar)
