@@ -184,34 +184,18 @@ namespace Lexer
 			quotationMarkActions[0x27 /* ' */] += ActionTokenCompleted;
 		}
 
-		private void BuildAmpersandLevel()
-		{
-			var ampersandActions = actions[(int)State.Ampersand];
-			var action = new Action(ActionTokenCompleted);
-			action += ActionBack;
-			Array.Fill(ampersandActions, action);
-			ampersandActions[0x26 /* & */] = ActionAddCharToToken;
-			ampersandActions[0x26 /* & */] += ActionTokenCompleted;
-		}
+		private void BuildAmpersandLevel() => BuildDoubleOperatorLevel(State.Minus, 0x26 /* & */);
+		private void BuildEqualsLevel() => BuildDoubleOperatorLevel(State.Minus, 0x3d /* = */);
+		private void BuildMinusLevel() => BuildDoubleOperatorLevel(State.Minus, 0x3e /* > */);
 
-		private void BuildEqualsLevel()
+		private void BuildDoubleOperatorLevel(State level, int secondChar)
 		{
-			var equalsActions = actions[(int)State.Equals];
+			var operatorActions = actions[(int)level];
 			var action = new Action(ActionTokenCompleted);
 			action += ActionBack;
-			Array.Fill(equalsActions, action);
-			equalsActions[0x3d /* = */] = ActionAddCharToToken;
-			equalsActions[0x3d /* = */] += ActionTokenCompleted;
-		}
-
-		private void BuildMinusLevel()
-		{
-			var minusActions = actions[(int)State.Minus];
-			var action = new Action(ActionTokenCompleted);
-			action += ActionBack;
-			Array.Fill(minusActions, action);
-			minusActions[0x3e /* > */] = ActionAddCharToToken;
-			minusActions[0x3e /* > */] += ActionTokenCompleted;
+			Array.Fill(operatorActions, action);
+			operatorActions[secondChar] = ActionAddCharToToken;
+			operatorActions[secondChar] += ActionTokenCompleted;
 		}
 
 		private static bool CheckDigit(int symbol) => (symbol >= 0x30 && symbol <= 0x39);
