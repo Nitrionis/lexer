@@ -1,8 +1,0 @@
-﻿keywordsoffset 0
-void 0
-int 1
-float 2
-char 3
-if 4
-while 5
-struct 6

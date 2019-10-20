@@ -25,13 +25,23 @@ namespace Lexer
 		public bool isError = false;
 
 		public override string ToString() => string.Format(
-			"{0,16} {1,-16} r:{2,3} c:{3,3}",
-			!isError ? type.ToString() : "Error-" + type.ToString(), strValue, rowIndex, colIndex);
+			"r:{0,3} c:{1,3} {2,16} {3}",
+			rowIndex, colIndex, !isError ? type.ToString() : "Error-" + type.ToString(), strValue);
 	}
 
 	public class Lexer
 	{
-		private readonly string fileAsString;
+		private string fileAsString;
+		public string FileAsString
+		{
+			get => fileAsString;
+			set
+			{
+				fileAsString = value;
+				Reset();
+			}
+		}
+
 		private readonly Stack<int> rowSizes;
 		private readonly Dictionary<string, int> keywords;
 
@@ -65,18 +75,17 @@ namespace Lexer
 		private Token token;
 		private bool tokenCompleted;
 
-		public Lexer(string fileAsString)
+		public Lexer()
 		{
-			this.fileAsString = fileAsString;
 			rowSizes = new Stack<int>();
 			keywords = new Dictionary<string, int>()
 			{
-				["void"]   = 0,
-				["int"]    = 1,
-				["float"]  = 2,
-				["char"]   = 3,
-				["if"]     = 4,
-				["while"]  = 5,
+				["void"] = 0,
+				["int"] = 1,
+				["float"] = 2,
+				["char"] = 3,
+				["if"] = 4,
+				["while"] = 5,
 				["struct"] = 6
 			};
 			statesCount = Enum.GetValues(typeof(State)).Length;
@@ -106,12 +115,22 @@ namespace Lexer
 			token = new Token();
 			tokenCompleted = false;
 			while (!tokenCompleted && charIndex < fileAsString.Length) {
-				symbol = fileAsString[charIndex]; 
+				symbol = fileAsString[charIndex];
 				actions[(int)activeState][symbol]();
 				charIndex++; colIndex++;
 			}
 			isError = token.isError;
 			return token.type != Token.Type.Undefined ? token : null;
+		}
+
+		public void Reset()
+		{
+			charIndex = 0;
+			rowIndex = 0;
+			colIndex = 0;
+			isError = false;
+			tokenCompleted = false;
+			activeState = State.Start;
 		}
 
 		private void BuildStartLevel()
@@ -137,7 +156,7 @@ namespace Lexer
 			startActions[0x5b /* [ */] = ActionOneSymbolOperator;
 			startActions[0x5c /* \ */] = ActionErrorSymbol;
 			startActions[0x5d /* ] */] = ActionOneSymbolOperator;
-			Array.Fill(startActions, ActionErrorSymbol, 0x5e, 3);
+			Array.Fill(startActions, ActionErrorSymbol, 0x5e, 3); // ^ _ `
 			Array.Fill(startActions, ActionSetWordState, 0x61, 26); // A B C ...
 			startActions[0x7b /* { */] = ActionOneSymbolOperator;
 			startActions[0x7c /* | */] = ActionErrorSymbol;
@@ -265,26 +284,25 @@ namespace Lexer
 			ActionTokenCompleted();
 		}
 
-		private void ActionSetStartState()
-		{
-			activeState = State.Start;
-		}
-		private void ActionSetWordState() => SetState(State.Word, Token.Type.Word);
-		private void ActionSetIntState() => SetState(State.Int, Token.Type.Int);
-		private void ActionSetCharState() => SetState(State.Char, Token.Type.Char);
-		private void ActionSetFloatState() => SetState(State.Float, Token.Type.Float);
-		private void ActionSetMinusState() => SetState(State.Minus, Token.Type.Operator);
-		private void ActionSetEqualsState() => SetState(State.Equals, Token.Type.Operator);
-		private void ActionSetSolidusState() => SetState(State.Solidus, Token.Type.Operator);
-		private void ActionSetAmpersandState() => SetState(State.Ampersand, Token.Type.Operator);
-		private void ActionSetQuotationMarkState() => SetState(State.QuotationMark, Token.Type.ConstStr);
-		private void ActionSetDoubleSolidusState() => SetState(State.DoubleSolidus, Token.Type.Undefined);
-		private void SetState(State state, Token.Type type)
+		private void ActionSetStartState() => activeState = State.Start;
+		private void ActionSetWordState() => SetState(State.Word, Token.Type.Word, updateLocation: true);
+		private void ActionSetIntState() => SetState(State.Int, Token.Type.Int, updateLocation: true);
+		private void ActionSetCharState() => SetState(State.Char, Token.Type.Char, updateLocation: true);
+		private void ActionSetFloatState() => SetState(State.Float, Token.Type.Float, updateLocation: false);
+		private void ActionSetMinusState() => SetState(State.Minus, Token.Type.Operator, updateLocation: true);
+		private void ActionSetEqualsState() => SetState(State.Equals, Token.Type.Operator, updateLocation: true);
+		private void ActionSetSolidusState() => SetState(State.Solidus, Token.Type.Operator, updateLocation: true);
+		private void ActionSetAmpersandState() => SetState(State.Ampersand, Token.Type.Operator, updateLocation: true);
+		private void ActionSetQuotationMarkState() => SetState(State.QuotationMark, Token.Type.ConstStr, updateLocation: true);
+		private void ActionSetDoubleSolidusState() => SetState(State.DoubleSolidus, Token.Type.Undefined, updateLocation: true);
+		private void SetState(State state, Token.Type type, bool updateLocation)
 		{
 			activeState = state;
 			token.type = type;
 			token.strValue += symbol.ToString();
-			UpdateTokenLocation();
+			if (updateLocation) {
+				UpdateTokenLocation();
+			}
 		}
 
 		private void ActionErrorSymbol()
@@ -332,13 +350,91 @@ namespace Lexer
 
 		static void Main(string[] args)
 		{
-			string path = args.Length == 0 ? "input.txt" : args[0];
-			using (StreamReader sr = new StreamReader(path, Encoding.UTF8)) {
-				lexer = new Lexer(sr.ReadToEnd());
+			lexer = new Lexer();
+			Test[] tests = new Test[]
+			{
+				new Test("\0", ""),
+				new Test(" \0",   ""),
+				new Test("a\0",   "r:  0 c:  0             Word a\n"),
+				new Test("int\0", "r:  0 c:  0          Keyword int\n"),
+				new Test("1\0",   "r:  0 c:  0              Int 1\n"),
+				new Test("1.0\0", "r:  0 c:  0            Float 1.0\n"),
+				new Test("\"const string\"\0",    "r:  0 c:  0         ConstStr \"const string\"\n"),
+				new Test("123456789\0",           "r:  0 c:  0              Int 123456789\n"),
+				new Test("123456789.123456789\0", "r:  0 c:  0            Float 123456789.123456789\n"),
+				new Test("*\0", "r:  0 c:  0         Operator *\n"),
+				new Test("->\0", "r:  0 c:  0         Operator ->\n"),
+				new Test("&\0", "r:  0 c:  0         Operator &\n"),
+				new Test("&&&\0", 
+					"r:  0 c:  0         Operator &&\n" +
+					"r:  0 c:  2         Operator &\n"),
+				new Test("& &&\0", 
+					"r:  0 c:  0         Operator &\n" +
+					"r:  0 c:  2         Operator &&\n"),
+				new Test("123*123\0",
+					"r:  0 c:  0              Int 123\n" +
+					"r:  0 c:  3         Operator *\n" +
+					"r:  0 c:  4              Int 123\n"),
+				new Test("123 * 123\0", 
+					"r:  0 c:  0              Int 123\n" +
+					"r:  0 c:  4         Operator *\n" +
+					"r:  0 c:  6              Int 123\n"),
+				new Test("float *\0", 
+					"r:  0 c:  0          Keyword float\n" +
+					"r:  0 c:  6         Operator *\n"),
+				new Test("float*\0", 
+					"r:  0 c:  0          Keyword float\n" +
+					"r:  0 c:  5         Operator *\n"),
+				new Test("word123\0", "r:  0 c:  0             Word word123\n"),
+				new Test("123word\0", "r:  0 c:  0        Error-Int 123w\n"),
+				new Test("word 123\0",
+					"r:  0 c:  0             Word word\n" +
+					"r:  0 c:  5              Int 123\n"),
+				new Test("*+\0", 
+					"r:  0 c:  0         Operator *\n" +
+					"r:  0 c:  1         Operator +\n"),
+				new Test("\"~!@#$%^&*()_+'':;<>//qwertyuiopasdfghjklzxcvbnm1234567890\"\0", 
+					"r:  0 c:  0         ConstStr \"~!@#$%^&*()_+'':;<>//qwertyuiopasdfghjklzxcvbnm1234567890\"\n"),
+				new Test("//~!@#$%^&*()_+'':;<>//qwertyuiopasdfghjklzxcvbnm1234567890\0", ""),
+				new Test("word123456789qwertyuiopasdfghjklzxcvbnm\0", "r:  0 c:  0             Word word123456789qwertyuiopasdfghjklzxcvbnm\n"),
+			};
+			for (int i = 0; i < tests.Length; i++) {
+				bool result = tests[i].Execute();
+				if (result) {
+					Console.WriteLine(string.Format("Test {0, 2} done", i));
+				} else {
+					Console.WriteLine(string.Format("Test {0, 2} fail", i));
+					Console.WriteLine("\tInput\n" + tests[i].Input);
+					Console.WriteLine("\tOutput\n" + tests[i].Output);
+					Console.WriteLine("\tResult\n" + tests[i].GetTokens());
+				}
 			}
-			Token token;
-			while (null != (token = lexer.Next())) {
-				Console.WriteLine(token);
+		}
+
+		private struct Test
+		{
+			public readonly string Input;
+			public readonly string Output;
+
+			public Test(string input, string output)
+			{
+				Input = input; Output = output;
+			}
+
+			public bool Execute()
+			{
+				return GetTokens() == Output;
+			}
+
+			public string GetTokens()
+			{
+				string result = "";
+				lexer.FileAsString = Input;
+				Token token;
+				while (null != (token = lexer.Next())) {
+					result += token.ToString() + '\n';
+				}
+				return result;
 			}
 		}
 	}
