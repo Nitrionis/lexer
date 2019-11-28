@@ -2,440 +2,204 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Token = Compiler.Tokenizer.Token;
+using Operator = Compiler.Tokenizer.Tokenizer.Operator;
+using TokenType = Compiler.Tokenizer.Token.Type;
 
-namespace Lexer
+namespace Compiler
 {
-	public class Token
-	{
-		public enum Type
-		{
-			Undefined,
-			Word,
-			Keyword,
-			Operator,
-			ConstStr,
-			Int,
-			Float,
-			Char
-		}
-		public Type type = Type.Undefined;
-		public string strValue = "";
-		public int rowIndex = -1;
-		public int colIndex = -1;
-		public bool isError = false;
-
-		public override string ToString() => string.Format(
-			"r:{0,3} c:{1,3} {2,16} {3}",
-			rowIndex, colIndex, !isError ? type.ToString() : "Error-" + type.ToString(), strValue);
-	}
-
-	public class Lexer
-	{
-		private string fileAsString;
-		public string FileAsString
-		{
-			get => fileAsString;
-			set
-			{
-				fileAsString = value;
-				Reset();
-			}
-		}
-
-		private readonly Stack<int> rowSizes;
-		private readonly Dictionary<string, int> keywords;
-
-		private int charIndex = 0;
-		private int rowIndex = 0;
-		private int colIndex = 0;
-		private char symbol;
-		private bool isError;
-
-		private enum State : int
-		{
-			Undefined = -1,
-			Start = 0,
-			Solidus = 1,
-			DoubleSolidus = 2,
-			QuotationMark = 3,
-			Ampersand = 4,
-			Minus = 5,
-			Equals = 6,
-			Word = 7,
-			Int = 8,
-			Float = 9,
-			Char = 10
-		}
-		private State activeState = State.Start;
-		private readonly int statesCount;
-		private readonly int alphabetSize = 128;
-
-		private delegate void Action();
-		private Action[][] actions;
-		private Token token;
-		private bool tokenCompleted;
-
-		public Lexer()
-		{
-			rowSizes = new Stack<int>();
-			keywords = new Dictionary<string, int>()
-			{
-				["void"] = 0,
-				["int"] = 1,
-				["float"] = 2,
-				["char"] = 3,
-				["if"] = 4,
-				["while"] = 5,
-				["struct"] = 6
-			};
-			statesCount = Enum.GetValues(typeof(State)).Length;
-			actions = new Action[statesCount][];
-			for (int i = 0; i < statesCount; i++) {
-				actions[i] = new Action[alphabetSize];
-				Array.Fill(actions[i], ActionSkip);
-			}
-			BuildStartLevel();
-			BuildSolidusLevel();
-			BuildDoubleSolidusLevel();
-			BuildQuotationMarkLevel();
-			BuildAmpersandLevel();
-			BuildEqualsLevel();
-			BuildMinusLevel();
-			BuildCharLevel();
-			BuildWordLevel();
-			BuildIntLevel();
-			BuildFloatLevel();
-		}
-
-		public Token Next()
-		{
-			if (isError) {
-				return null;
-			}
-			token = new Token();
-			tokenCompleted = false;
-			while (!tokenCompleted && charIndex < fileAsString.Length) {
-				symbol = fileAsString[charIndex];
-				actions[(int)activeState][symbol]();
-				charIndex++; colIndex++;
-			}
-			isError = token.isError;
-			return token.type != Token.Type.Undefined ? token : null;
-		}
-
-		public void Reset()
-		{
-			charIndex = 0;
-			rowIndex = 0;
-			colIndex = 0;
-			isError = false;
-			tokenCompleted = false;
-			activeState = State.Start;
-		}
-
-		private void BuildStartLevel()
-		{
-			var startActions = actions[(int)State.Start];
-			startActions[0x0a/* \n */] = ActrionLineFeed;
-			startActions[0x21 /* ! */] = ActionOneSymbolOperator;
-			startActions[0x22 /* " */] = ActionSetQuotationMarkState;
-			Array.Fill(startActions, ActionErrorSymbol, 0x23, 3); // # $ %
-			startActions[0x26 /* & */] = ActionSetAmpersandState;
-			startActions[0x27 /* ' */] = ActionSetCharState;
-			Array.Fill(startActions, ActionOneSymbolOperator, 0x28, 4); // ( ) * +
-			startActions[0x2c /* , */] = ActionErrorSymbol;
-			startActions[0x2d /* - */] = ActionSetMinusState;
-			startActions[0x2e /* . */] = ActionOneSymbolOperator;
-			startActions[0x2f /* / */] = ActionSetSolidusState;
-			Array.Fill(startActions, ActionSetIntState, 0x30, 10); // 0123456789
-			startActions[0x3a /* : */] = ActionErrorSymbol;
-			Array.Fill(startActions, ActionOneSymbolOperator, 0x3b, 2); // ; <
-			startActions[0x3d /* = */] = ActionSetEqualsState;
-			Array.Fill(startActions, ActionErrorSymbol, 0x3e, 3); // > ? @
-			Array.Fill(startActions, ActionSetWordState, 0x41, 26); // A B C ...
-			startActions[0x5b /* [ */] = ActionOneSymbolOperator;
-			startActions[0x5c /* \ */] = ActionErrorSymbol;
-			startActions[0x5d /* ] */] = ActionOneSymbolOperator;
-			Array.Fill(startActions, ActionErrorSymbol, 0x5e, 3); // ^ _ `
-			Array.Fill(startActions, ActionSetWordState, 0x61, 26); // A B C ...
-			startActions[0x7b /* { */] = ActionOneSymbolOperator;
-			startActions[0x7c /* | */] = ActionErrorSymbol;
-			Array.Fill(startActions, ActionOneSymbolOperator, 0x7d, 2); // } ~
-		}
-
-		private void BuildSolidusLevel()
-		{
-			var solidusActions = actions[(int)State.Solidus];
-			var action = new Action(ActionOneSymbolOperator);
-			action += ActionBack;
-			Array.Fill(solidusActions, action);
-			solidusActions[0x2f /* / */] = ActionSetDoubleSolidusState;
-		}
-
-		private void BuildDoubleSolidusLevel()
-		{
-			var doubleSolidusActions = actions[(int)State.DoubleSolidus];
-			Array.Fill(doubleSolidusActions, ActionAddCharToToken);
-			doubleSolidusActions[0x0a /* \n */] = ActionSetStartState;
-			doubleSolidusActions[0x0a /* \n */] += ActionClear;
-		}
-
-		private void BuildQuotationMarkLevel()
-		{
-			var quotationMarkActions = actions[(int)State.QuotationMark];
-			Array.Fill(quotationMarkActions, ActionAddCharToToken);
-			quotationMarkActions[0x00 /* \0 */] = ActionErrorSymbol;
-			quotationMarkActions[0x22 /* " */] = ActionAddCharToToken;
-			quotationMarkActions[0x22 /* " */] += ActionTokenCompleted;
-		}
-
-		private void BuildCharLevel()
-		{
-			var quotationMarkActions = actions[(int)State.Char];
-			Array.Fill(quotationMarkActions, () => {
-				ActionAddCharToToken();
-				if (token.strValue.Length > 2) {
-					ActionErrorSymbol();
-				}
-			});
-			quotationMarkActions[0x00 /* \0 */] = ActionErrorSymbol;
-			quotationMarkActions[0x27 /* ' */] = ActionAddCharToToken;
-			quotationMarkActions[0x27 /* ' */] += ActionTokenCompleted;
-		}
-
-		private void BuildAmpersandLevel() => BuildDoubleOperatorLevel(State.Ampersand, 0x26 /* & */);
-		private void BuildEqualsLevel() => BuildDoubleOperatorLevel(State.Equals, 0x3d /* = */);
-		private void BuildMinusLevel() => BuildDoubleOperatorLevel(State.Minus, 0x3e /* > */);
-
-		private void BuildDoubleOperatorLevel(State level, int secondChar)
-		{
-			var operatorActions = actions[(int)level];
-			var action = new Action(ActionTokenCompleted);
-			action += ActionBack;
-			Array.Fill(operatorActions, action);
-			operatorActions[secondChar] = ActionAddCharToToken;
-			operatorActions[secondChar] += ActionTokenCompleted;
-		}
-
-		private static bool CheckDigit(int symbol) => (symbol >= 0x30 && symbol <= 0x39);
-		private static bool CheckLatin(int symbol) => (symbol >= 0x41 && symbol <= 0x5a) || (symbol >= 0x61 && symbol <= 0x7a);
-
-		private void BuildWordLevel()
-		{
-			var wordActions = actions[(int)State.Word];
-			for (int i = 0; i < wordActions.Length; i++) {
-				if (CheckDigit(i) || CheckLatin(i)) {
-					wordActions[i] = ActionAddCharToToken;
-				} else {
-					wordActions[i] = ActionBack;
-					wordActions[i] += ActionTokenCompleted;
-					wordActions[i] += () => {
-						token.type = keywords.ContainsKey(token.strValue) ? Token.Type.Keyword : Token.Type.Word;
-					};
-				}
-			}
-		}
-
-		private void BuildIntLevel()
-		{
-			var intActions = actions[(int)State.Int];
-			var action = new Action(ActionBack);
-			action += ActionTokenCompleted;
-			for (int i = 0; i < intActions.Length; i++) {
-				if (CheckDigit(i)) {
-					intActions[i] = ActionAddCharToToken;
-				} else if (CheckLatin(i)) {
-					intActions[i] = ActionErrorSymbol;
-				} else {
-					intActions[i] = action;
-				}
-			}
-			Array.Fill(intActions, ActionErrorSymbol, 0x22, 3); // " % #
-			Array.Fill(intActions, ActionErrorSymbol, 0x27, 2); // ' (
-			intActions[0x2c /* , */] = ActionErrorSymbol;
-			intActions[0x2e /* . */] = ActionSetFloatState;
-			intActions[0x40 /* @ */] = ActionErrorSymbol;
-			intActions[0x5c /* \ */] = ActionErrorSymbol;
-			Array.Fill(intActions, ActionErrorSymbol, 0x5f, 2); // _ \
-		}
-
-		private void BuildFloatLevel()
-		{
-			CopyLevelOfFiniteStateMachines((int)State.Int, (int)State.Float);
-			actions[(int)State.Float][0x2e] = ActionErrorSymbol;
-		}
-
-		private void CopyLevelOfFiniteStateMachines(int srcLvlIndex, int dstLvlIndex)
-		{
-			for (int i = 0; i < alphabetSize; i++) {
-				actions[dstLvlIndex][i] = actions[srcLvlIndex][i];
-			}
-		}
-
-		private void ActionSkip() { }
-
-		private void ActionClear() => token.strValue = "";
-
-		private void ActionOneSymbolOperator()
-		{
-			token.type = Token.Type.Operator;
-			token.strValue = symbol.ToString();
-			UpdateTokenLocation();
-			ActionTokenCompleted();
-		}
-
-		private void ActionSetStartState() => activeState = State.Start;
-		private void ActionSetWordState() => SetState(State.Word, Token.Type.Word, updateLocation: true);
-		private void ActionSetIntState() => SetState(State.Int, Token.Type.Int, updateLocation: true);
-		private void ActionSetCharState() => SetState(State.Char, Token.Type.Char, updateLocation: true);
-		private void ActionSetFloatState() => SetState(State.Float, Token.Type.Float, updateLocation: false);
-		private void ActionSetMinusState() => SetState(State.Minus, Token.Type.Operator, updateLocation: true);
-		private void ActionSetEqualsState() => SetState(State.Equals, Token.Type.Operator, updateLocation: true);
-		private void ActionSetSolidusState() => SetState(State.Solidus, Token.Type.Operator, updateLocation: true);
-		private void ActionSetAmpersandState() => SetState(State.Ampersand, Token.Type.Operator, updateLocation: true);
-		private void ActionSetQuotationMarkState() => SetState(State.QuotationMark, Token.Type.ConstStr, updateLocation: true);
-		private void ActionSetDoubleSolidusState() => SetState(State.DoubleSolidus, Token.Type.Undefined, updateLocation: true);
-		private void SetState(State state, Token.Type type, bool updateLocation)
-		{
-			activeState = state;
-			token.type = type;
-			token.strValue += symbol.ToString();
-			if (updateLocation) {
-				UpdateTokenLocation();
-			}
-		}
-
-		private void ActionErrorSymbol()
-		{
-			token.isError = true;
-			tokenCompleted = true;
-			ActionAddCharToToken();
-		}
-
-		private void ActionBack()
-		{
-			charIndex--;
-			colIndex--;
-			if (colIndex < 0) {
-				colIndex = rowSizes.Pop() - 1;
-				rowIndex--;
-			}
-		}
-
-		private void ActionAddCharToToken() => token.strValue += symbol;
-
-		private void ActionTokenCompleted()
-		{
-			tokenCompleted = true;
-			ActionSetStartState();
-		}
-
-		private void ActrionLineFeed()
-		{
-			rowIndex++;
-			rowSizes.Push(colIndex + 1);
-			colIndex = -1;
-		}
-
-		private void UpdateTokenLocation()
-		{
-			token.rowIndex = rowIndex;
-			token.colIndex = colIndex;
-		}
-	}
-
 	class Program
 	{
-		private static Lexer lexer;
+		private static Tokenizer.Tokenizer lexer;
 
 		static void Main(string[] args)
 		{
-			lexer = new Lexer();
-			Test[] tests = new Test[]
-			{
-				new Test("\0", ""),
-				new Test(" \0",   ""),
-				new Test("a\0",   "r:  0 c:  0             Word a\n"),
-				new Test("int\0", "r:  0 c:  0          Keyword int\n"),
-				new Test("1\0",   "r:  0 c:  0              Int 1\n"),
-				new Test("1.0\0", "r:  0 c:  0            Float 1.0\n"),
-				new Test("\"const string\"\0",    "r:  0 c:  0         ConstStr \"const string\"\n"),
-				new Test("123456789\0",           "r:  0 c:  0              Int 123456789\n"),
-				new Test("123456789.123456789\0", "r:  0 c:  0            Float 123456789.123456789\n"),
-				new Test("*\0", "r:  0 c:  0         Operator *\n"),
-				new Test("->\0", "r:  0 c:  0         Operator ->\n"),
-				new Test("&\0", "r:  0 c:  0         Operator &\n"),
-				new Test("&&&\0", 
-					"r:  0 c:  0         Operator &&\n" +
-					"r:  0 c:  2         Operator &\n"),
-				new Test("& &&\0", 
-					"r:  0 c:  0         Operator &\n" +
-					"r:  0 c:  2         Operator &&\n"),
-				new Test("123*123\0",
-					"r:  0 c:  0              Int 123\n" +
-					"r:  0 c:  3         Operator *\n" +
-					"r:  0 c:  4              Int 123\n"),
-				new Test("123 * 123\0", 
-					"r:  0 c:  0              Int 123\n" +
-					"r:  0 c:  4         Operator *\n" +
-					"r:  0 c:  6              Int 123\n"),
-				new Test("float *\0", 
-					"r:  0 c:  0          Keyword float\n" +
-					"r:  0 c:  6         Operator *\n"),
-				new Test("float*\0", 
-					"r:  0 c:  0          Keyword float\n" +
-					"r:  0 c:  5         Operator *\n"),
-				new Test("word123\0", "r:  0 c:  0             Word word123\n"),
-				new Test("123word\0", "r:  0 c:  0        Error-Int 123w\n"),
-				new Test("word 123\0",
-					"r:  0 c:  0             Word word\n" +
-					"r:  0 c:  5              Int 123\n"),
-				new Test("*+\0", 
-					"r:  0 c:  0         Operator *\n" +
-					"r:  0 c:  1         Operator +\n"),
-				new Test("\"~!@#$%^&*()_+'':;<>//qwertyuiopasdfghjklzxcvbnm1234567890\"\0", 
-					"r:  0 c:  0         ConstStr \"~!@#$%^&*()_+'':;<>//qwertyuiopasdfghjklzxcvbnm1234567890\"\n"),
-				new Test("//~!@#$%^&*()_+'':;<>//qwertyuiopasdfghjklzxcvbnm1234567890\0", ""),
-				new Test("word123456789qwertyuiopasdfghjklzxcvbnm\0", "r:  0 c:  0             Word word123456789qwertyuiopasdfghjklzxcvbnm\n"),
-			};
-			for (int i = 0; i < tests.Length; i++) {
-				bool result = tests[i].Execute();
-				if (result) {
-					Console.WriteLine(string.Format("Test {0, 2} done", i));
-				} else {
-					Console.WriteLine(string.Format("Test {0, 2} fail", i));
-					Console.WriteLine("\tInput\n" + tests[i].Input);
-					Console.WriteLine("\tOutput\n" + tests[i].Output);
-					Console.WriteLine("\tResult\n" + tests[i].GetTokens());
+			using (lexer = new Tokenizer.Tokenizer(GenerateStreamFromString(""))) {
+				Test[] tests = GenerateTests();
+				for (int i = 0; i < tests.Length; i++) {
+					var result = tests[i].Execute();
+					Console.WriteLine((result.IsDone ? "Done " : "Failed ") + i);
+					if (!result.IsDone) {
+						Console.WriteLine("Result");
+						foreach (var t in result.Tokens) {
+							Console.WriteLine(t.ToString());
+						}
+						Console.WriteLine("Output");
+						foreach (var t in tests[i].Output) {
+							Console.WriteLine(t.ToString());
+						}
+					}
 				}
 			}
+		}
+
+		private static Test[] GenerateTests()
+		{
+			return new Test[] {
+				new Test("", new Token[0]),
+				new Test("a", new []{ new Token(TokenType.Word, "a", "a", 0, 0) }),
+				new Test("1", new []{ new Token(TokenType.Int, 1, "1", 0, 0) }),
+				new Test("/", new []{ new Token(TokenType.Operator, Operator.Divide, "/", 0, 0) }),
+				new Test("//", new Token[0]),
+				new Test("//a", new Token[0]),
+				new Test("//`1234567890-=~!@#$%^&*()_+qwertyuiop[]QWERTYUIOP{}asdfghjkl;'ASDFGHJKL:|\"\\zxcvbnm,./ZXCVBNM<>?",
+					new Token[0]),
+				new Test("&&&", new []{
+					new Token(TokenType.Operator, Operator.LogicalAnd, "&&", 0, 0),
+					new Token(TokenType.Operator, Operator.BitwiseAnd, "&", 0, 2) }),
+				new Test("& &&", new []{
+					new Token(TokenType.Operator, Operator.BitwiseAnd, "&", 0, 0),
+					new Token(TokenType.Operator, Operator.LogicalAnd, "&&", 0, 2) }),
+				new Test("+-*/=&&&!~()[]{}%<>!=|||", new []{
+					new Token(TokenType.Operator, Operator.Add, "+", 0, 0),
+					new Token(TokenType.Operator, Operator.Subtract, "-", 0, 1),
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 2),
+					new Token(TokenType.Operator, Operator.Divide, "/", 0, 3),
+					new Token(TokenType.Operator, Operator.Assignment, "=", 0, 4),
+					new Token(TokenType.Operator, Operator.LogicalAnd,"&&", 0, 5),
+					new Token(TokenType.Operator, Operator.BitwiseAnd, "&", 0, 7),
+					new Token(TokenType.Operator, Operator.LogicalNot, "!", 0, 8),
+					new Token(TokenType.Operator, Operator.BitwiseNot, "~", 0, 9),
+					new Token(TokenType.Operator, Operator.OpenParenthesis, "(", 0, 10),
+					new Token(TokenType.Operator, Operator.CloseParenthesis, ")", 0, 11),
+					new Token(TokenType.Operator, Operator.OpenSquareBracket, "[", 0, 12),
+					new Token(TokenType.Operator, Operator.CloseSquareBracket, "]", 0, 13),
+					new Token(TokenType.Operator, Operator.OpenCurlyBrace, "{", 0, 14),
+					new Token(TokenType.Operator, Operator.CloseCurlyBrace, "}", 0, 15),
+					new Token(TokenType.Operator, Operator.Remainder, "%", 0, 16),
+					new Token(TokenType.Operator, Operator.LessTest, "<", 0, 17),
+					new Token(TokenType.Operator, Operator.MoreTest, ">", 0, 18),
+					new Token(TokenType.Operator, Operator.NotEqualityTest, "!=", 0, 19),
+					new Token(TokenType.Operator, Operator.LogicalOr, "||", 0, 21),
+					new Token(TokenType.Operator, Operator.BitwiseOr, "|", 0, 23),}),
+				new Test("1234567890", new []{ new Token(TokenType.Int, 1234567890, "1234567890", 0, 0) }),
+				new Test("0xff", new []{ new Token(TokenType.Int, 255, "0xff", 0, 0) }),
+				new Test("001", new []{ new Token(TokenType.Int, 1, "001", 0, 0) }),
+				new Test("99999999999999999999", new []{ new Token(TokenType.Int, null, "99999999999999999999", 0, 0) { Message = "OverflowException" } }),
+				new Test("0xffffffff", new []{ new Token(TokenType.Int, -1, "0xffffffff", 0, 0) }),
+				new Test("0xfffffffff", new []{ new Token(TokenType.Int, null, "0xfffffffff", 0, 0) { Message = "OverflowException" } }),
+				new Test("0XFF", new []{ new Token(TokenType.Int, 255, "0XFF", 0, 0) }),
+				new Test("1.0", new []{ new Token(TokenType.Float, 1.0f, "1.0", 0, 0) }),
+				new Test("1.", new []{ new Token(TokenType.Float, null, "1.", 0, 0) }),
+				new Test("1234567890.1234567890",
+					new []{ new Token(TokenType.Float,
+						1234567890.1234567890f,
+						"1234567890.1234567890", 0, 0) }),
+				new Test("3.4E+39", new []{ new Token(TokenType.Float, null, "3.4E+39", 0, 0) { Message = "OverflowException" } }),
+				new Test("1.5E-46", new []{ new Token(TokenType.Float, 0f, "1.5E-46", 0, 0) }),
+				new Test("1.0e1", new []{ new Token(TokenType.Float, 10.0f, "1.0e1", 0, 0) }),
+				new Test("1.0e+1", new []{ new Token(TokenType.Float, 10.0f, "1.0e+1", 0, 0) }),
+				new Test("1.0e-1", new []{ new Token(TokenType.Float, 0.1f, "1.0e-1", 0, 0) }),
+				new Test("1.0e1.", new []{ new Token(TokenType.Float, null, "1.0e1.", 0, 0) }),
+				new Test("1.0e+1.", new []{ new Token(TokenType.Float, null, "1.0e+1.", 0, 0) }),
+				new Test("1.0e-1.", new []{ new Token(TokenType.Float, null, "1.0e-1.", 0, 0) }),
+				new Test("'a'", new []{ new Token(TokenType.Char, 'a', "'a'", 0, 0) }),
+				new Test("'ab'", new []{ new Token(TokenType.Char, null, "'ab", 0, 0) }),
+				new Test("\"a\"", new []{ new Token(TokenType.ConstStr, "a", "\"a\"", 0, 0) }),
+				new Test("\"`1234567890-=~!@#$%^&*()_+qwertyuiop[]QWERTYUIOP{}asdfghjkl;'ASDFGHJKL:|\\zxcvbnm,./ZXCVBNM<>?\"",
+					new []{ new Token(TokenType.ConstStr,
+						"`1234567890-=~!@#$%^&*()_+qwertyuiop[]QWERTYUIOP{}asdfghjkl;'ASDFGHJKL:|\\zxcvbnm,./ZXCVBNM<>?",
+						"\"`1234567890-=~!@#$%^&*()_+qwertyuiop[]QWERTYUIOP{}asdfghjkl;'ASDFGHJKL:|\\zxcvbnm,./ZXCVBNM<>?\"", 0, 0) }),
+				new Test("a a", new []{
+					new Token(TokenType.Word, "a", "a", 0, 0),
+					new Token(TokenType.Word, "a", "a", 0, 2) }),
+				new Test("123*123", new []{
+					new Token(TokenType.Int, 123, "123", 0, 0),
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 3),
+					new Token(TokenType.Int, 123, "123", 0, 4) }),
+				new Test("123 * 123", new []{
+					new Token(TokenType.Int, 123, "123", 0, 0),
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 4),
+					new Token(TokenType.Int, 123, "123", 0, 6) }),
+				new Test("123.0*123.0", new []{
+					new Token(TokenType.Float, 123.0f, "123.0", 0, 0),
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 5),
+					new Token(TokenType.Float, 123.0f, "123.0", 0, 6) }),
+				new Test("123.0 * 123.0", new []{
+					new Token(TokenType.Float, 123.0f, "123.0", 0, 0),
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 6),
+					new Token(TokenType.Float, 123.0f, "123.0", 0, 8) }),
+				new Test("a.", new []{
+					new Token(TokenType.Word, "a", "a", 0, 0),
+					new Token(TokenType.Operator, Operator.Dot, ".", 0, 1) }),
+				new Test("a*b", new []{
+					new Token(TokenType.Word, "a", "a", 0, 0),
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 1),
+					new Token(TokenType.Word, "b", "b", 0, 2) }),
+				new Test("-1.0e-1", new []{
+					new Token(TokenType.Operator, Operator.Subtract, "-", 0, 0),
+					new Token(TokenType.Float, 0.1f, "1.0e-1", 0, 1)}),
+				new Test("-1", new []{
+					new Token(TokenType.Operator, Operator.Subtract, "-", 0, 0),
+					new Token(TokenType.Int, 1, "1", 0, 1)}),
+				new Test("void", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.Void, "void", 0, 0) }),
+				new Test("int", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.Int, "int", 0, 0) }),
+				new Test("float", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.Float, "float", 0, 0) }),
+				new Test("char", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.Char, "char", 0, 0) }),
+				new Test("string", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.String, "string", 0, 0) }),
+				new Test("class", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.Class, "class", 0, 0) }),
+				new Test("if", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.If, "if", 0, 0) }),
+				new Test("for", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.For, "for", 0, 0) }),
+				new Test("while", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.While, "while", 0, 0) }),
+				new Test(" while", new []{ new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.While, "while", 0, 1) }),
+				new Test("*while+", new []{
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 0),
+					new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.While, "while", 0, 1),
+					new Token(TokenType.Operator, Operator.Add, "+", 0, 6),}),
+				new Test("qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890", new []{
+					new Token(TokenType.Word, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890",
+					"qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890", 0, 0) }),
+				new Test("*a+", new []{
+					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 0),
+					new Token(TokenType.Word, "a", "a", 0, 1),
+					new Token(TokenType.Operator, Operator.Add, "+", 0, 2),}),
+			};
 		}
 
 		private struct Test
 		{
-			public readonly string Input;
-			public readonly string Output;
+			public struct Result
+			{
+				public bool IsDone;
+				public List<Token> Tokens;
+			}
 
-			public Test(string input, string output)
+			public readonly string Input;
+			public readonly Token[] Output;
+
+			public Test(string input, Token[] output)
 			{
 				Input = input; Output = output;
 			}
 
-			public bool Execute()
+			public Result Execute()
 			{
-				return GetTokens() == Output;
+				var tokens = GetTokens();
+				bool equals = true;
+				equals &= Output.Length == tokens.Count;
+				if (equals) {
+					for (int i = 0; i < Output.Length; i++) {
+						equals &= Token.Equals(Output[i], tokens[i]);
+					}
+				}
+				return new Result { IsDone = equals, Tokens = tokens };
 			}
 
-			public string GetTokens()
+			private List<Token> GetTokens()
 			{
-				string result = "";
-				lexer.FileAsString = Input;
+				lexer.UpdateStream(GenerateStreamFromString(Input));
+				var tokens = new List<Token>();
 				Token token;
 				while (null != (token = lexer.Next())) {
-					result += token.ToString() + '\n';
+					tokens.Add(token);
 				}
-				return result;
+				return tokens;
 			}
+		}
+
+		private static MemoryStream GenerateStreamFromString(string value)
+		{
+			return new MemoryStream(Encoding.UTF8.GetBytes(value ?? ""));
 		}
 	}
 }
