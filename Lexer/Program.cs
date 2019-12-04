@@ -37,7 +37,7 @@ namespace Compiler
 		{
 			return new Test[] {
 				new Test("", new Token[0]),
-				new Test("a", new []{ new Token(TokenType.Word, "a", "a", 0, 0) }),
+				new Test("a", new []{ new Token(TokenType.Identifier, "a", "a", 0, 0) }),
 				new Test("1", new []{ new Token(TokenType.Int, 1, "1", 0, 0) }),
 				new Test("/", new []{ new Token(TokenType.Operator, Operator.Divide, "/", 0, 0) }),
 				new Test("//", new Token[0]),
@@ -95,14 +95,14 @@ namespace Compiler
 				new Test("1.0e-1.", new []{ new Token(TokenType.Float, null, "1.0e-1.", 0, 0) }),
 				new Test("'a'", new []{ new Token(TokenType.Char, 'a', "'a'", 0, 0) }),
 				new Test("'ab'", new []{ new Token(TokenType.Char, null, "'ab", 0, 0) }),
-				new Test("\"a\"", new []{ new Token(TokenType.ConstStr, "a", "\"a\"", 0, 0) }),
+				new Test("\"a\"", new []{ new Token(TokenType.String, "a", "\"a\"", 0, 0) }),
 				new Test("\"`1234567890-=~!@#$%^&*()_+qwertyuiop[]QWERTYUIOP{}asdfghjkl;'ASDFGHJKL:|\\zxcvbnm,./ZXCVBNM<>?\"",
-					new []{ new Token(TokenType.ConstStr,
+					new []{ new Token(TokenType.String,
 						"`1234567890-=~!@#$%^&*()_+qwertyuiop[]QWERTYUIOP{}asdfghjkl;'ASDFGHJKL:|\\zxcvbnm,./ZXCVBNM<>?",
 						"\"`1234567890-=~!@#$%^&*()_+qwertyuiop[]QWERTYUIOP{}asdfghjkl;'ASDFGHJKL:|\\zxcvbnm,./ZXCVBNM<>?\"", 0, 0) }),
 				new Test("a a", new []{
-					new Token(TokenType.Word, "a", "a", 0, 0),
-					new Token(TokenType.Word, "a", "a", 0, 2) }),
+					new Token(TokenType.Identifier, "a", "a", 0, 0),
+					new Token(TokenType.Identifier, "a", "a", 0, 2) }),
 				new Test("123*123", new []{
 					new Token(TokenType.Int, 123, "123", 0, 0),
 					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 3),
@@ -120,12 +120,12 @@ namespace Compiler
 					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 6),
 					new Token(TokenType.Float, 123.0f, "123.0", 0, 8) }),
 				new Test("a.", new []{
-					new Token(TokenType.Word, "a", "a", 0, 0),
+					new Token(TokenType.Identifier, "a", "a", 0, 0),
 					new Token(TokenType.Operator, Operator.Dot, ".", 0, 1) }),
 				new Test("a*b", new []{
-					new Token(TokenType.Word, "a", "a", 0, 0),
+					new Token(TokenType.Identifier, "a", "a", 0, 0),
 					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 1),
-					new Token(TokenType.Word, "b", "b", 0, 2) }),
+					new Token(TokenType.Identifier, "b", "b", 0, 2) }),
 				new Test("-1.0e-1", new []{
 					new Token(TokenType.Operator, Operator.Subtract, "-", 0, 0),
 					new Token(TokenType.Float, 0.1f, "1.0e-1", 0, 1)}),
@@ -147,11 +147,11 @@ namespace Compiler
 					new Token(TokenType.Keyword, Tokenizer.Tokenizer.Keyword.While, "while", 0, 1),
 					new Token(TokenType.Operator, Operator.Add, "+", 0, 6),}),
 				new Test("qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890", new []{
-					new Token(TokenType.Word, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890",
+					new Token(TokenType.Identifier, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890",
 					"qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890", 0, 0) }),
 				new Test("*a+", new []{
 					new Token(TokenType.Operator, Operator.Multiply, "*", 0, 0),
-					new Token(TokenType.Word, "a", "a", 0, 1),
+					new Token(TokenType.Identifier, "a", "a", 0, 1),
 					new Token(TokenType.Operator, Operator.Add, "+", 0, 2),}),
 			};
 		}

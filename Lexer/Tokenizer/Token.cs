@@ -4,14 +4,15 @@
 	{
 		public enum Type
 		{
-			Undefined,
-			Word,
-			Keyword,
-			Operator,
-			ConstStr,
-			Int,
-			Float,
-			Char
+			Undefined	= 1,
+			Identifier	= 2,
+			Keyword		= 3,
+			Operator	= 4,
+			Literal		= 128,
+			String		= 5 | Literal,
+			Int			= 6 | Literal,
+			Float		= 7 | Literal,
+			Char		= 8 | Literal
 		}
 
 		public Type TypeId = Type.Undefined;

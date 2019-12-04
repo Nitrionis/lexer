@@ -5,55 +5,74 @@ using System.Collections.Generic;
 
 namespace Compiler.Tokenizer
 {
+	public class TokenizerException : InvalidOperationException
+	{
+		public TokenizerException() { }
+
+		public TokenizerException(string message) : base(message) { }
+
+		public TokenizerException(string message, Exception inner) : base(message, inner) { }
+	}
+
 	public class Tokenizer : IDisposable
 	{
 		public enum Keyword
 		{
 			Type	= 512,
-			Void	= 0 | Type,
-			Int		= 1 | Type,
-			Float	= 2 | Type,
-			Char	= 3 | Type,
-			String	= 4 | Type,
-			Class	= 5,
+			Void	= 1 | Type,
+			Int		= 2 | Type,
+			Float	= 3 | Type,
+			Char	= 4 | Type,
+			String	= 5 | Type,
+			Class	= 6,
 			Logic	= 1024,
-			If		= 6  | Logic,
-			For		= 7  | Logic,
-			While	= 8  | Logic,
-			Return	= 9  | Logic,
-			Break	= 10 | Logic,
+			If		= 7  | Logic,
+			For		= 8  | Logic,
+			While	= 9  | Logic,
+			Return	= 10 | Logic,
+			Break	= 11 | Logic,
 			Modifier= 2048,
-			Public	= 11 | Modifier,
-			Static  = 12 | Modifier,
+			Public	= 12 | Modifier,
+			Static  = 13 | Modifier,
+			New		= 14,
+			Bool	= 4096,
+			True	= 15 | Bool,
+			False	= 16 | Bool,
+			Null	= 17
 		}
 
 		public enum Operator
 		{
-			Assignment,
-			Add,
-			Subtract,
-			Multiply,
-			Divide,
-			Remainder,
-			LogicalNot,
-			BitwiseNot,
-			LogicalAnd,
-			BitwiseAnd,
-			LogicalOr,
-			BitwiseOr,
-			EqualityTest,
-			NotEqualityTest,
-			LessTest,
-			MoreTest,
-			OpenParenthesis,
-			CloseParenthesis,
-			OpenCurlyBrace,
-			CloseCurlyBrace,
-			OpenSquareBracket,
-			CloseSquareBracket,
-			Dot,
-			Comma,
-			SemiColon
+			Assignment			= 1,
+			AdditiveOperator		= 128,
+			UnaryOperator			= 256,
+			Add					= 2 | AdditiveOperator | UnaryOperator,
+			Subtract			= 3 | AdditiveOperator | UnaryOperator,
+			MultiplicativeOperator	= 512,
+			Multiply			= 4 | MultiplicativeOperator,
+			Divide				= 5 | MultiplicativeOperator,
+			Remainder			= 6 | MultiplicativeOperator,
+			LogicalNot			= 7 | UnaryOperator,
+			BitwiseNot			= 8 | UnaryOperator,
+			LogicalAnd			= 9,
+			BitwiseAnd			= 10,
+			LogicalOr			= 11,
+			BitwiseOr			= 12,
+			EqualityOperator		= 1024,
+			EqualityTest		= 13 | EqualityOperator,
+			NotEqualityTest		= 14 | EqualityOperator,
+			RelationalOperator		= 2048,
+			LessTest			= 15 | RelationalOperator,
+			MoreTest			= 16 | RelationalOperator,
+			OpenParenthesis		= 17,
+			CloseParenthesis	= 18,
+			OpenCurlyBrace		= 19,
+			CloseCurlyBrace		= 20,
+			OpenSquareBracket	= 21,
+			CloseSquareBracket	= 22,
+			Dot					= 23,
+			Comma				= 24,
+			SemiColon			= 25
 		}
 
 		private static readonly Dictionary<string, Keyword> keywords;
@@ -65,6 +84,9 @@ namespace Compiler.Tokenizer
 				["float"]	= Keyword.Float,
 				["char"]	= Keyword.Char,
 				["string"]	= Keyword.String,
+				["bool"]	= Keyword.Bool,
+				["true"]	= Keyword.True,
+				["false"]	= Keyword.False,
 				["if"]		= Keyword.If,
 				["for"]		= Keyword.For,
 				["while"]	= Keyword.While,
@@ -72,6 +94,8 @@ namespace Compiler.Tokenizer
 				["return"]	= Keyword.Return,
 				["break"]	= Keyword.Break,
 				["public"]	= Keyword.Public,
+				["new"]		= Keyword.New,
+				["null"]	= Keyword.Null
 			};
 		}
 
@@ -121,12 +145,12 @@ namespace Compiler.Tokenizer
 			}
 			// Start Level
 			{
-				void ActionSetWordState() => SetState(State.Word, Token.Type.Word, updateLocation: true);
+				void ActionSetWordState() => SetState(State.Word, Token.Type.Identifier, updateLocation: true);
 				void ActionSetIntState() => SetState(State.Int, Token.Type.Int, updateLocation: true);
 
 				var startActions = actions[(int)State.Start];
 				startActions[0x21 /* ! */] = () => SetState(State.NotEquals, Token.Type.Operator, updateLocation: true);
-				startActions[0x22 /* " */] = () => SetState(State.ConstString, Token.Type.ConstStr, updateLocation: true);
+				startActions[0x22 /* " */] = () => SetState(State.ConstString, Token.Type.String, updateLocation: true);
 				Array.Fill(startActions, ActionErrorSymbol, 0x23, 2); // # $
 				startActions[0x25 /* % */] = () => ActionOneSymbolOperator(Operator.Remainder);
 				startActions[0x26 /* & */] = () => SetState(State.Ampersand, Token.Type.Operator, updateLocation: true);
@@ -332,6 +356,8 @@ namespace Compiler.Tokenizer
 			isError = false;
 		}
 
+		public Token Peek() => token;
+
 		public Token Next()
 		{
 			if (isError) {
@@ -341,7 +367,7 @@ namespace Compiler.Tokenizer
 			tokenCompleted = false;
 			while (!tokenCompleted && stream.Next() > -1) {
 				if (stream.Symbol > alphabetSize) {
-					throw new Exception("Lexer fatal: unsupported character '" + stream.Symbol + "'");
+					throw new TokenizerException("Lexer fatal: unsupported character '" + stream.Symbol + "'");
 				}
 				actions[(int)activeState][stream.Symbol]();
 			}
@@ -400,7 +426,7 @@ namespace Compiler.Tokenizer
 						case Token.Type.Char:
 							token.Value = token.RawValue[1];
 							break;
-						case Token.Type.ConstStr:
+						case Token.Type.String:
 							token.Value = token.RawValue.Substring(1, token.RawValue.Length - 2);
 							break;
 						case Token.Type.Float:
@@ -423,8 +449,8 @@ namespace Compiler.Tokenizer
 						case Token.Type.Keyword:
 							token.Value = KeywordToEnum(token.RawValue);
 							break;
-						case Token.Type.Word:
-							token.TypeId = IsKeyword(token.RawValue) ? Token.Type.Keyword : Token.Type.Word;
+						case Token.Type.Identifier:
+							token.TypeId = IsKeyword(token.RawValue) ? Token.Type.Keyword : Token.Type.Identifier;
 							if (token.TypeId == Token.Type.Keyword) {
 								token.Value = KeywordToEnum(token.RawValue);
 							} else {
