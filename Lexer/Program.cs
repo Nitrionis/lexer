@@ -14,22 +14,23 @@ namespace Compiler
 
 		static void Main(string[] args)
 		{
-			using (lexer = new Tokenizer.Tokenizer(GenerateStreamFromString(""))) {
-				Test[] tests = GenerateTests();
-				for (int i = 0; i < tests.Length; i++) {
-					var result = tests[i].Execute();
-					Console.WriteLine((result.IsDone ? "Done " : "Failed ") + i);
-					if (!result.IsDone) {
-						Console.WriteLine("Result");
-						foreach (var t in result.Tokens) {
-							Console.WriteLine(t.ToString());
-						}
-						Console.WriteLine("Output");
-						foreach (var t in tests[i].Output) {
-							Console.WriteLine(t.ToString());
-						}
-					}
-				}
+			using (lexer = new Tokenizer.Tokenizer(GenerateStreamFromString("a + (b - c)"))) {
+				Parser.Parser parser = new Parser.Parser(lexer);
+				//Test[] tests = GenerateTests();
+				//for (int i = 0; i < tests.Length; i++) {
+				//	var result = tests[i].Execute();
+				//	Console.WriteLine((result.IsDone ? "Done " : "Failed ") + i);
+				//	if (!result.IsDone) {
+				//		Console.WriteLine("Result");
+				//		foreach (var t in result.Tokens) {
+				//			Console.WriteLine(t.ToString());
+				//		}
+				//		Console.WriteLine("Output");
+				//		foreach (var t in tests[i].Output) {
+				//			Console.WriteLine(t.ToString());
+				//		}
+				//	}
+				//}
 			}
 		}
 

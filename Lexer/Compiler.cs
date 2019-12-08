@@ -26,6 +26,7 @@ namespace Compiler
 					}
 				}
 
+				public readonly bool IsStatic;
 				public readonly Type OutputType;
 				public readonly string Name;
 				public readonly List<PramsInfo> Prams;
@@ -39,34 +40,18 @@ namespace Compiler
 			}
 
 			public readonly string Name;
-			public readonly List<FieldInfo> Fields;
-			public readonly List<MethodInfo> Methods;
+			public readonly Dictionary<string, FieldInfo> Fields;
+			public readonly Dictionary<string, MethodInfo> Methods;
 
 			public TypeInfo(string name)
 			{
 				Name = name;
-				Fields = new List<FieldInfo>();
+				Fields = new Dictionary<string, FieldInfo>();
+				Methods = new Dictionary<string, MethodInfo>();
 			}
 
-			public FieldInfo GetField(string name)
-			{
-				foreach (var f in Fields) {
-					if (f.Name == name) {
-						return f;
-					}
-				}
-				return null;
-			}
-
-			public MethodInfo GetMethod(string name)
-			{
-				foreach (var m in Methods) {
-					if (m.Name == name) {
-						return m;
-					}
-				}
-				return null;
-			}
+			public bool ContainsMember(string identifier) => 
+				Fields.ContainsKey(identifier) || Methods.ContainsKey(identifier);
 		}
 
 		public class Type
@@ -107,14 +92,6 @@ namespace Compiler
 				["float"]	= new TypeInfo("float"),
 				["string"]	= new TypeInfo("string"),
 			};
-			//Functions = new Dictionary<string, FunctionInfo>() {
-			//	["print"] = new FunctionInfo(
-			//		outputType: new Type(Types["void"]),
-			//		name: "print",
-			//		prams: new List<PramsInfo> {
-			//			new PramsInfo(new Type(Types["char"], pointerRang: 1), "msg")
-			//		})
-			//};
 		}
 	}
 }

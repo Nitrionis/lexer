@@ -64,13 +64,14 @@ namespace Compiler.Tokenizer
 			RelationalOperator		= 2048,
 			LessTest			= 15 | RelationalOperator,
 			MoreTest			= 16 | RelationalOperator,
-			OpenParenthesis		= 17,
-			CloseParenthesis	= 18,
+			Primary					= 4096,
+			OpenParenthesis		= 17 | Primary,
+			CloseParenthesis	= 18 | Primary,
 			OpenCurlyBrace		= 19,
 			CloseCurlyBrace		= 20,
-			OpenSquareBracket	= 21,
-			CloseSquareBracket	= 22,
-			Dot					= 23,
+			OpenSquareBracket	= 21 | Primary,
+			CloseSquareBracket	= 22 | Primary,
+			Dot					= 23 | Primary,
 			Comma				= 24,
 			SemiColon			= 25
 		}
@@ -163,7 +164,7 @@ namespace Compiler.Tokenizer
 				startActions[0x2d /* - */] = () => ActionOneSymbolOperator(Operator.Subtract);
 				startActions[0x2e /* . */] = () => ActionOneSymbolOperator(Operator.Dot);
 				startActions[0x2f /* / */] = () => SetState(State.Division, Token.Type.Operator, updateLocation: true);
-				Array.Fill(startActions, ActionSetIntState, 0x30, 10); // 0123456789
+				Array.Fill(startActions, ActionSetIntState, 0x30, 10); // 0 1 2 ...
 				startActions[0x3a /* : */] = ActionErrorSymbol;
 				startActions[0x3b /* ; */] = () => ActionOneSymbolOperator(Operator.SemiColon);
 				startActions[0x3c /* < */] = () => ActionOneSymbolOperator(Operator.LessTest);
@@ -373,7 +374,8 @@ namespace Compiler.Tokenizer
 			}
 			UpdateTokenValue();
 			ActionTokenCompleted();
-			return token.TypeId != Token.Type.Undefined ? token : null;
+			token = token.TypeId != Token.Type.Undefined ? token : null;
+			return token;
 		}
 
 		private void ActionSkip() { }
