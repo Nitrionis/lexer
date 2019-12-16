@@ -5,16 +5,10 @@ using Compiler.Parser.Nodes;
 using Token = Compiler.Tokenizer.Token;
 using Operator = Compiler.Tokenizer.Tokenizer.Operator;
 using Keyword = Compiler.Tokenizer.Tokenizer.Keyword;
-using System.Text;
-using System.IO;
 
 namespace Compiler.Parser
 {
 	using Tokenizer = Tokenizer.Tokenizer;
-
-	//using ExpressionsCombinations = System.Collections.Generic.Dictionary<
-	//	Nodes.Expression, System.Collections.Generic.Dictionary<
-	//		Nodes.Expression, System.Action>>;
 
 	public class ParserException : InvalidOperationException
 	{
@@ -29,7 +23,7 @@ namespace Compiler.Parser
 	{
 		public WrongTokenFound(Token token, string rawValue) : base(CreateMessage(token, rawValue)) { }
 
-		private static string CreateMessage(Token token, string rawValue) => 
+		private static string CreateMessage(Token token, string rawValue) =>
 			string.Format("(r:{0}, c:{1}) syntax error: '{2}' expected, but {3} found",
 				token.RowIndex, token.ColIndex, rawValue, token.RawValue);
 	}
@@ -64,7 +58,7 @@ namespace Compiler.Parser
 			NextTokenUnsafe();
 			var exception = ParseExpression();
 			if (exception != null) {
-				Console.WriteLine("yes");
+				Console.WriteLine(exception.ToString());
 			}
 		}
 
@@ -72,19 +66,19 @@ namespace Compiler.Parser
 
 		private bool NextToken() => TryGetToken() != null;
 
-		private Token NextTokenUnsafe()
-		{
-			Token token;
-			if (null == (token = TryGetToken())) {
-				throw new ParserException("Program break");
-			}
-			return token;
-		}
+		private Token NextTokenUnsafe() => TryGetToken() ?? throw new ParserException("Program break");
+
 
 		private Token TryGetToken()
 		{
-			var token = foreseeableFuture.Count > 0 ? foreseeableFuture.Pop() : tokenizer.Next();
-			return token == null ? null : token.IsError ? 
+			Token token;
+			if (foreseeableFuture.Count == 0) {
+				token = tokenizer.Next();
+			} else {
+				foreseeableFuture.Pop();
+				token = foreseeableFuture.Count == 0 ? tokenizer.Peek() : foreseeableFuture.Peek();
+			}
+			return token == null ? null : token.IsError ?
 				throw new TokenizerException("Lexical analysis failed.") : token;
 		}
 
@@ -113,15 +107,14 @@ namespace Compiler.Parser
 			var token = PeekToken();
 			if (token == null ||
 				!((token.TypeId == Token.Type.Operator) &&
-				 ((Operator)token.Value == Operator.Assignment))) 
-			{
+				 ((Operator)token.Value == Operator.Assignment))) {
 				return left;
 			}
 			NextTokenUnsafe();
 			var right = ParseAssignment();
 			left = new BinaryOperation(token, left, right);
 			return left;
-		} 
+		}
 
 		private Expression ParseConditionalOrExpression() // _ || _
 		{
@@ -131,8 +124,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 ((Operator)token.Value == Operator.LogicalOr))) 
-				{
+					 ((Operator)token.Value == Operator.LogicalOr))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -150,8 +142,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 ((Operator)token.Value == Operator.LogicalAnd))) 
-				{
+					 ((Operator)token.Value == Operator.LogicalAnd))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -169,8 +160,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 ((Operator)token.Value == Operator.BitwiseOr))) 
-				{
+					 ((Operator)token.Value == Operator.BitwiseOr))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -188,8 +178,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 ((Operator)token.Value == Operator.BitwiseAnd))) 
-				{
+					 ((Operator)token.Value == Operator.BitwiseAnd))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -207,8 +196,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 (((Operator)token.Value & Operator.EqualityOperator) != 0))) 
-				{
+					 (((Operator)token.Value & Operator.EqualityOperator) != 0))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -226,8 +214,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 (((Operator)token.Value & Operator.RelationalOperator) != 0))) 
-				{
+					 (((Operator)token.Value & Operator.RelationalOperator) != 0))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -245,8 +232,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 (((Operator)token.Value & Operator.AdditiveOperator) != 0))) 
-				{
+					 (((Operator)token.Value & Operator.AdditiveOperator) != 0))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -264,8 +250,7 @@ namespace Compiler.Parser
 				var token = PeekToken();
 				if (token == null ||
 					!((token.TypeId == Token.Type.Operator) &&
-					 (((Operator)token.Value & Operator.MultiplicativeOperator) != 0))) 
-				{
+					 (((Operator)token.Value & Operator.MultiplicativeOperator) != 0))) {
 					break;
 				}
 				NextTokenUnsafe();
@@ -279,8 +264,7 @@ namespace Compiler.Parser
 		{
 			var token = PeekToken();
 			if (token == null) return null;
-			if (token.TypeId == Token.Type.Operator)
-			{
+			if (token.TypeId == Token.Type.Operator) {
 				if (((Operator)token.Value & Operator.UnaryOperator) != 0) {
 					NextTokenUnsafe();
 					return new UnaryOperation(token, ParseUnaryExpression());
@@ -303,7 +287,8 @@ namespace Compiler.Parser
 		}
 
 		private static bool IsTypeName(Token token) =>
-			token.TypeId == Token.Type.Identifier && Compiler.Types.ContainsKey((string)token.Value);
+			token.TypeId == Token.Type.Identifier && Compiler.Types.ContainsKey((string)token.Value) ||
+			token.TypeId == Token.Type.Keyword && ((Keyword)token.Value & Keyword.Type) != 0;
 
 		private static bool IsOperator(Token token, Operator @operator) =>
 			token.TypeId == Token.Type.Operator && (Operator)token.Value == @operator;
@@ -329,7 +314,10 @@ namespace Compiler.Parser
 						}
 						uint rang = ParseArrayRang();
 						var data = ParseArrayData();
-						return new ArrayCreation(new Compiler.Type(Compiler.Types[(string)typeName.Value], rang), size, data);
+						var type = typeName.TypeId == Token.Type.Keyword ? 
+							Expression.ConvertTokenType(typeName) : 
+							new Compiler.Type(Compiler.Types[(string)typeName.Value], rang);
+						return new ArrayCreation(type, size, data);
 					}
 					foreseeableFuture.Push(typeName);
 				}
@@ -412,12 +400,12 @@ namespace Compiler.Parser
 							case Keyword.False: NextToken(); return new Literal(new Compiler.Type(Expression.BoolTypeInfo), false);
 							case Keyword.Null: NextToken(); return new Literal(new Compiler.Type(Expression.NullTypeInfo), null);
 							case Keyword.New: return ParseObjectCreationExpression(previousExpression);
-							default: throw new ParserException(
-								string.Format("(r:{0}, c:{1}) syntax error: bad keyword '{2}'",
-									token.RowIndex, token.ColIndex, token.RawValue));
+							default: throw new ParserException(string.Format(
+								"(r:{0}, c:{1}) syntax error: bad keyword '{2}'",
+								token.RowIndex, token.ColIndex, token.RawValue));
 						}
 					case Token.Type.Identifier: return ParseReference(previousExpression);
-					case Token.Type.Operator: 
+					case Token.Type.Operator:
 						switch ((Operator)PeekToken().Value) {
 							case Operator.OpenParenthesis: return ParseParenthesis(previousExpression);
 							case Operator.OpenSquareBracket: return ParseArrayAccess(previousExpression);
@@ -495,20 +483,21 @@ namespace Compiler.Parser
 		private Expression ParseObjectCreationExpression(Expression previousExpression)
 		{
 			var token = NextTokenUnsafe();
-			if (token.TypeId != Token.Type.Identifier) {
+			Compiler.TypeInfo type;
+			if (token.TypeId == Token.Type.Keyword && ((Keyword)token.Value & Keyword.Type) != 0) {
+				type = Expression.ConvertTokenType(token).Info;
+			} else if (token.TypeId != Token.Type.Identifier) {
 				throw new WrongTokenFound(token, "identifier");
-			}
-			if (!Compiler.Types.ContainsKey((string)token.Value)) {
+			} else if (!Compiler.Types.ContainsKey((string)token.Value)) {
 				throw new TypeNotFound(token);
+			} else {
+				type = Compiler.Types[(string)token.Value];
 			}
 			var maybeParenthesis = NextTokenUnsafe();
 			if (!IsOperator(maybeParenthesis, Operator.OpenParenthesis)) {
 				throw new WrongTokenFound(token, "(");
 			}
-			NextToken();
-			return new ObjectCreation(
-				Compiler.Types[(string)token.Value], 
-				(Invocation)ParseInvocation(Invocation.Constructor));
+			return new ObjectCreation(type, (Invocation)ParseInvocation(Invocation.Constructor));
 		}
 
 		private Expression ParseReference(Expression previousExpression)
@@ -516,7 +505,7 @@ namespace Compiler.Parser
 			var token = PeekToken();
 			NextToken();
 			return Compiler.Types.ContainsKey((string)token.Value) ?
-				(Expression)(new TypeReference(token)) : 
+				(Expression)(new TypeReference(token)) :
 				(Expression)(new VariableOrMemberReference((string)token.Value));
 		}
 	}

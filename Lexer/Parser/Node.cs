@@ -13,21 +13,12 @@ namespace Compiler.Parser.Nodes
 
 		public Node() => Children = new List<Node>();
 
-		public sealed override string ToString() => throw new InvalidOperationException();
+		public sealed override string ToString() => ToString("", true, false);
 
-		protected abstract void ToString(string indent, bool last, bool empty);
-	}
+		public abstract string ToString(string indent, bool last, bool empty);
 
-	public class SyntaxTree : Node
-	{
-		public Node Root;
-
-		public SyntaxTree()
-		{
-
-		}
-
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public string GetIndent(string indent, bool last) => indent + (last ? "  " : "| ");
+		public string GetPrefix(string indent, bool last) => indent + (last ? "└─" : "├─");
 	}
 
 	public interface IScope
@@ -49,22 +40,22 @@ namespace Compiler.Parser.Nodes
 			Instance = this;
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class TypeDefinition : Node
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class FieldDefinition : Node
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class MethodDefinition : Node
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public abstract class Expression : Node
@@ -88,6 +79,10 @@ namespace Compiler.Parser.Nodes
 						case TokenizerKeyword.Void: return new Compiler.Type(VoidTypeInfo);
 						case TokenizerKeyword.True: return new Compiler.Type(BoolTypeInfo);
 						case TokenizerKeyword.False: return new Compiler.Type(BoolTypeInfo);
+						case TokenizerKeyword.Int: return new Compiler.Type(IntTypeInfo);
+						case TokenizerKeyword.Float: return new Compiler.Type(FloatTypeInfo);
+						case TokenizerKeyword.Char: return new Compiler.Type(CharTypeInfo);
+						case TokenizerKeyword.String: return new Compiler.Type(StringTypeInfo);
 						default: throw new InvalidOperationException();
 					}
 				case Token.Type.Int: return new Compiler.Type(IntTypeInfo);
@@ -106,10 +101,21 @@ namespace Compiler.Parser.Nodes
 		public ObjectCreation(TypeInfo typeInfo, Invocation invocation)
 		{
 			Type = new Compiler.Type(typeInfo);
-			Children = invocation.Children;
+			Children = new List<Node>(invocation.Parameters);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += string.Format(" new {0}(... ObjectCreation\n", Type.Info.Name);
+			for (int i = 0; i < Children.Count; i++) {
+				if (Children[i] != null) {
+					res += Children[i].ToString(indent, i == Children.Count - 1, false);
+				}
+			}
+			return res;
+		}
 	}
 
 	public interface IVariable { }
@@ -127,7 +133,16 @@ namespace Compiler.Parser.Nodes
 
 		public VariableOrMemberReference(string name) => MemberName = name;
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += string.Format(" Variable {0}\n", MemberName);
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public class Literal : Expression
@@ -138,7 +153,12 @@ namespace Compiler.Parser.Nodes
 
 		public Literal(Compiler.Type type, object value) => Value = new VariableInfo(type, null) { Value = value };
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			res += string.Format(" Literal {0}\n", Value.Value.ToString());
+			return res;
+		}
 	}
 
 	public abstract class Operation : Expression
@@ -159,7 +179,7 @@ namespace Compiler.Parser.Nodes
 	public class BinaryOperation : Operation
 	{
 		public Expression Left { get => (Expression)Children[0]; set => Children[0] = value; }
-		public Expression Right { get => (Expression) Children[1]; set => Children[1] = value; }
+		public Expression Right { get => (Expression)Children[1]; set => Children[1] = value; }
 
 		public BinaryOperation(Token token, Expression left, Expression right)
 			: base(token.RawValue, (Tokenizer.Tokenizer.Operator)token.Value)
@@ -169,7 +189,16 @@ namespace Compiler.Parser.Nodes
 			Children.Add(right);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += string.Format(" Binary {0}\n", StringRepresentation);
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public class UnaryOperation : Operation
@@ -183,7 +212,16 @@ namespace Compiler.Parser.Nodes
 			Children.Add(child);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += string.Format(" Unary {0}\n", StringRepresentation);
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public class ArrayCreation : Expression
@@ -198,7 +236,21 @@ namespace Compiler.Parser.Nodes
 			Children = new List<Node>(data);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += string.Format(" new {0} ArrayCreation\n", Type.Info.Name);
+			res += ArraySize.ToString(indent, false, false);
+			for (int i = 0; i < Children.Count; i++) {
+				if (Children[i] != null) {
+					res += Children[i].ToString(indent, i == Children.Count - 1, false);
+				} else {
+					res += indent + (i == Children.Count - 1 ? "└─" : "├─") + " null";
+				}
+			}
+			return res;
+		}
 	}
 
 	public class ArrayAccess : Expression
@@ -213,7 +265,16 @@ namespace Compiler.Parser.Nodes
 			Children.Add(child);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += "[] index child\n";
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public class MemberAccess : Expression
@@ -228,7 +289,16 @@ namespace Compiler.Parser.Nodes
 			Children.Add(child);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += " ." + MemberName + "\n";
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public class Parenthesis : Expression
@@ -241,7 +311,16 @@ namespace Compiler.Parser.Nodes
 			Children.Add(child);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += "() Parenthesis\n";
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public class Invocation : Expression
@@ -258,7 +337,23 @@ namespace Compiler.Parser.Nodes
 			Children.Add(child);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += " () Invocation\n";
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, Parameters.Count == 0, false);
+			}
+			for (int i = 0; i < Parameters.Count; i++) {
+				if (Parameters[i] != null) {
+					res += Parameters[i].ToString(indent, i == Parameters.Count - 1, false);
+				} else {
+					res += indent + (i == Parameters.Count - 1 ? "└─" : "├─") + " null";
+				}
+			}
+			return res;
+		}
 	}
 
 	public class TypeReference : Expression
@@ -277,7 +372,16 @@ namespace Compiler.Parser.Nodes
 			Children.Capacity = 0;
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += " " + Type.Name + " TypeReference\n";
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public class TypeCast : Expression
@@ -292,7 +396,16 @@ namespace Compiler.Parser.Nodes
 			Children.Add(child);
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty)
+		{
+			string res = GetPrefix(indent, last);
+			indent = GetIndent(indent, last);
+			res += string.Format(" ({0}) TypeCast\n", Type.Name);
+			for (int i = 0; i < Children.Count; i++) {
+				res += Children[i].ToString(indent, i == Children.Count - 1, false);
+			}
+			return res;
+		}
 	}
 
 	public interface IStatement { }
@@ -309,38 +422,38 @@ namespace Compiler.Parser.Nodes
 			Name = name;
 		}
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class CallStatement : Node, IStatement
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class Assignment : Node, IStatement
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class Block : Node, IStatement, IScope
 	{
 		public Dictionary<string, VariableInfo> Variables { get; set; }
 
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class If : Node, IStatement
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class While : Node, IStatement
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 
 	public class Break : Node, IStatement
 	{
-		protected override void ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
+		public override string ToString(string indent, bool last, bool empty) => throw new NotImplementedException();
 	}
 }

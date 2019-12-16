@@ -14,7 +14,10 @@ namespace Compiler
 
 		static void Main(string[] args)
 		{
-			using (lexer = new Tokenizer.Tokenizer(GenerateStreamFromString("a + (b - c)"))) {
+			using (lexer = new Tokenizer.Tokenizer(GenerateStreamFromString(
+				"a = b && c || d * (int)(float)(char)(string)-e.a.b.c(a+b, c-d)"
+				//"a = new int[1][][][] {new int[1][][]{},new int[1][][]{},new int[1][][]{}}"
+			))) {
 				Parser.Parser parser = new Parser.Parser(lexer);
 				//Test[] tests = GenerateTests();
 				//for (int i = 0; i < tests.Length; i++) {
